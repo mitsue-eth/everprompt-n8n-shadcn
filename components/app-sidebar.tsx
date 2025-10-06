@@ -35,46 +35,50 @@ import {
 
 const data = {
   user: {
-    name: "shadcn",
-    email: "m@example.com",
-    avatar: "/avatars/shadcn.jpg",
+    name: "EverPrompt User",
+    email: "user@everprompt.ai",
+    avatar: "/logo_everprompt.svg",
   },
   navMain: [
     {
-      title: "Dashboard",
+      title: "Prompts",
       url: "#",
-      icon: IconDashboard,
+      icon: IconFileAi,
     },
     {
-      title: "Lifecycle",
+      title: "Workflows",
       url: "#",
       icon: IconListDetails,
+    },
+    {
+      title: "Templates",
+      url: "#",
+      icon: IconFileDescription,
+    },
+    {
+      title: "Community",
+      url: "#",
+      icon: IconUsers,
     },
     {
       title: "Analytics",
       url: "#",
       icon: IconChartBar,
     },
-    {
-      title: "Projects",
-      url: "#",
-      icon: IconFolder,
-    },
-    {
-      title: "Team",
-      url: "#",
-      icon: IconUsers,
-    },
   ],
   navClouds: [
     {
-      title: "Capture",
-      icon: IconCamera,
+      title: "My Prompts",
+      icon: IconFileAi,
       isActive: true,
       url: "#",
       items: [
         {
-          title: "Active Proposals",
+          title: "Recent",
+          url: "#",
+        },
+        {
+          title: "Favorites",
           url: "#",
         },
         {
@@ -84,31 +88,39 @@ const data = {
       ],
     },
     {
-      title: "Proposal",
+      title: "n8n Workflows",
+      icon: IconListDetails,
+      url: "#",
+      items: [
+        {
+          title: "Recent Workflows",
+          url: "#",
+        },
+        {
+          title: "Imported",
+          url: "#",
+        },
+        {
+          title: "Collections",
+          url: "#",
+        },
+      ],
+    },
+    {
+      title: "Templates",
       icon: IconFileDescription,
       url: "#",
       items: [
         {
-          title: "Active Proposals",
+          title: "Community",
           url: "#",
         },
         {
-          title: "Archived",
-          url: "#",
-        },
-      ],
-    },
-    {
-      title: "Prompts",
-      icon: IconFileAi,
-      url: "#",
-      items: [
-        {
-          title: "Active Proposals",
+          title: "My Templates",
           url: "#",
         },
         {
-          title: "Archived",
+          title: "Featured",
           url: "#",
         },
       ],
@@ -133,19 +145,19 @@ const data = {
   ],
   documents: [
     {
-      name: "Data Library",
+      name: "Prompt Library",
       url: "#",
       icon: IconDatabase,
     },
     {
-      name: "Reports",
+      name: "n8n Integration",
       url: "#",
       icon: IconReport,
     },
     {
-      name: "Word Assistant",
+      name: "Community",
       url: "#",
-      icon: IconFileWord,
+      icon: IconUsers,
     },
   ],
 }
@@ -160,9 +172,13 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               asChild
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
-              <a href="#">
-                <IconInnerShadowTop className="!size-5" />
-                <span className="text-base font-semibold">Acme Inc.</span>
+              <a href="#" className="flex items-center gap-2">
+                <img 
+                  src="/logo_everprompt.svg" 
+                  alt="EverPrompt" 
+                  className="h-8 w-8"
+                />
+                <span className="text-base font-semibold">EverPrompt</span>
               </a>
             </SidebarMenuButton>
           </SidebarMenuItem>
