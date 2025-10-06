@@ -1,0 +1,366 @@
+---
+description: How prompt, labels and other schemas for DB looks like
+globs:
+alwaysApply: true
+---
+
+Awesome—here’s a copy-paste “Data Model / DB Instructions” section for your Cursor rules. It’s opinionated, Postgres-first (Neon), and ready for Drizzle or Prisma. It reuses your ideas but normalizes relationships for scale (junction tables instead of string-ID arrays).
+
+⸻
+
+Data Model Instructions — EverPrompt
+
+Goals
+• Scalable, multi-tenant, workspace-scoped data model.
+• First-class labels (0..N per prompt), versions, and sharing.
+• DB-ready for the UI: Start View (arc of labels), Label Sheet, Prompt Editor.
+• Extensible via metadata JSONB (no breaking migrations for small additions).
+• Clear visibility rules (system defaults + user/workspace items).
+• n8n community integration with workflow-specific features.
+• Plugin system support for future extensibility.
+
+⸻
+
+Core Principles 1. Normalize many-to-many (use junction tables; no arrays of IDs). 2. Workspace everywhere (every user belongs to ≥1 workspace; content is scoped). 3. Soft delete via archived_at (avoid hard deletes). 4. Time ordering: created_at, updated_at, plus activity (last_used_at, usage_count). 5. Extensibility: metadata JSONB on prompts/labels/tools. 6. Unlabeled is virtual (computed query), not a row.
+
+⸻
+
+Entities (tables)
+
+workspace
+• id (uuid, pk)
+• name (text)
+• slug (text, unique within tenant scope)
+• created_at (timestamptz, default now())
+
+user_account
+• id (uuid, pk)
+• email (citext, unique)
+• name (text)
+• avatar_url (text)
+• created_at (timestamptz)
+• settings (jsonb) — UI prefs, defaults, etc.
+
+workspace_member
+• workspace_id (fk workspace)
+• user_id (fk user_account)
+• role (enum: owner|admin|editor|viewer)
+• joined_at (timestamptz)
+• PK (workspace_id, user_id)
+
+⸻
+
+label
+• id (uuid, pk)
+• workspace_id (fk workspace) // system defaults use a special system workspace or NULL + is_default
+• name (text)
+• color (text) // HEX or token
+• icon (text) // optional
+• is_default (bool, default false)
+• metadata (jsonb) // {order?: number, …}
+• created_by (fk user_account)
+• created_at (timestamptz)
+• updated_at (timestamptz)
+• archived_at (timestamptz null)
+
+For Start View arc: we’ll compute “most recent labels” by last time a prompt with that label was updated/used.
+
+tool
+• id (uuid, pk)
+• name (text) // e.g., ChatGPT, Claude…
+• is_default (bool) // global
+• metadata (jsonb) // {modelVersions?:[], maxTokens?:..., apiEndpoint?:...}
+• created_at, updated_at, archived_at
+
+category (optional for v0)
+• Same pattern as label. Keep, but you can introduce later.
+
+⸻
+
+prompt
+• id (uuid, pk)
+• workspace_id (fk workspace)
+• title (text not null)
+• content (text not null) // current published draft content
+• preview (text generated?) // first N chars (can be materialized later)
+• version (int not null default 1) // current version number
+• is_public (bool default false)
+• is_template (bool default false)
+• archived_at (timestamptz null)
+• Activity
+• last_used_at (timestamptz null)
+• usage_count (int default 0)
+• Ownership
+• created_by (fk user_account)
+• updated_by (fk user_account)
+• created_at, updated_at
+• metadata (jsonb) // {modelFamily?: 'openai'|'anthropic'|..., tokenCount?: number, pinned?: boolean, n8nWorkflowId?: string, variables?: PromptVariable[], …}
+
+prompt_version
+• id (uuid, pk)
+• prompt_id (fk prompt)
+• version (int) // monotonic
+• content (text)
+• notes (text)
+• diff_summary (jsonb) // optional
+• created_by (fk user_account)
+• created_at (timestamptz)
+• Unique (prompt_id, version)
+
+prompt_label (junction)
+• prompt_id (fk prompt)
+• label_id (fk label)
+• PK (prompt_id, label_id)
+• added_at (timestamptz)
+• added_by (fk user_account)
+
+prompt_tool (junction; optional v0)
+• prompt_id (fk prompt)
+• tool_id (fk tool)
+• PK (prompt_id, tool_id)
+
+share_link
+• id (uuid, pk)
+• workspace_id (fk workspace)
+• resource_type (enum: 'prompt'|'collection'|'label')
+• resource_id (uuid)
+• token (text unique)
+• is_public (bool)
+• expires_at (timestamptz null)
+• created_by, created_at
+
+usage_event (telemetry lite)
+• id (uuid, pk)
+• workspace_id
+• user_id
+• prompt_id null
+• type (text) // e.g., ‘OPEN’,‘COPY’,‘RUN’,‘LABEL_ADD’
+• payload (jsonb)
+• created_at (timestamptz)
+
+You can defer usage_event for v0; keep columns in the plan.
+
+⸻
+
+Derived Views / Helpers
+
+v_label_recent
+
+A view to compute recent labels for the arc (by last activity on associated prompts).
+
+create view v_label_recent as
+select
+l.id as label_id,
+l.workspace_id,
+l.name,
+l.color,
+max(coalesce(p.updated_at, p.created_at)) as last_activity_at,
+count(pl.prompt_id) as prompt_count
+from label l
+left join prompt_label pl on pl.label_id = l.id
+left join prompt p on p.id = pl.prompt_id and p.archived_at is null
+where l.archived_at is null
+group by l.id;
+
+Unlabeled (virtual)
+
+Return prompts without any label:
+
+select p.\*
+from prompt p
+left join prompt_label pl on pl.prompt_id = p.id
+where pl.prompt_id is null
+and p.workspace_id = $1
+and p.archived_at is null;
+
+⸻
+
+Indices (important)
+• prompt(workspace_id, updated_at desc)
+• prompt(workspace_id, is_public, archived_at)
+• prompt_label(label_id, prompt_id) and (prompt_id, label_id)
+• label(workspace_id, archived_at, name)
+• prompt_version(prompt_id, version desc)
+• Full-text (later): gin on to_tsvector('simple', title || ' ' || preview)
+
+⸻
+
+API / Queries needed by the UI
+
+Start View — Arc data
+
+Input: workspace_id, limit N
+Output: top N labels by last_activity_at + color, name.
+
+select \*
+from v_label_recent
+where workspace_id = $1
+order by last_activity_at desc nulls last, name asc
+limit $2;
+
+Label Sheet — Prompts for a label
+
+select p.id, p.title, left(p.content, 200) as preview, p.updated_at, p.created_at
+from prompt p
+join prompt_label pl on pl.prompt_id = p.id
+where pl.label_id = $1
+and p.archived_at is null
+order by p.updated_at desc
+limit $2 offset $3;
+
+Label Sheet — All labels (with counts)
+
+select label_id, name, color, prompt_count, last_activity_at
+from v_label_recent
+where workspace_id = $1
+order by last_activity_at desc nulls last, name asc;
+
+Load Prompt into Editor
+
+select id, title, content, version, metadata
+from prompt
+where id = $1 and workspace_id = $2;
+
+Save (autosave → new version)
+• Transaction: 1. insert into prompt_version(prompt_id, version, content, created_by) values (...) 2. update prompt set content=$new, version=version+1, updated_by=$user, updated_at=now() where id=$prompt_id
+
+⸻
+
+Drizzle schema sketch (TypeScript)
+
+// drizzle/schema.ts
+import { pgTable, uuid, text, boolean, timestamp, integer, jsonb } from "drizzle-orm/pg-core";
+
+export const workspace = pgTable("workspace", {
+id: uuid("id").primaryKey().defaultRandom(),
+name: text("name").notNull(),
+slug: text("slug").notNull(),
+createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const userAccount = pgTable("user_account", {
+id: uuid("id").primaryKey().defaultRandom(),
+email: text("email").notNull().unique(),
+name: text("name"),
+avatarUrl: text("avatar_url"),
+settings: jsonb("settings"),
+createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const workspaceMember = pgTable("workspace_member", {
+workspaceId: uuid("workspace_id").notNull().references(() => workspace.id),
+userId: uuid("user_id").notNull().references(() => userAccount.id),
+role: text("role").$type<"owner"|"admin"|"editor"|"viewer">().notNull(),
+joinedAt: timestamp("joined_at", { withTimezone: true }).defaultNow(),
+}, (t) => ({
+pk: { primaryKey: [t.workspaceId, t.userId] }
+}));
+
+export const label = pgTable("label", {
+id: uuid("id").primaryKey().defaultRandom(),
+workspaceId: uuid("workspace_id").references(() => workspace.id),
+name: text("name").notNull(),
+color: text("color"),
+icon: text("icon"),
+isDefault: boolean("is_default").default(false),
+metadata: jsonb("metadata"),
+createdBy: uuid("created_by").references(() => userAccount.id),
+createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+archivedAt: timestamp("archived_at", { withTimezone: true }),
+});
+
+export const tool = pgTable("tool", {
+id: uuid("id").primaryKey().defaultRandom(),
+name: text("name").notNull(),
+isDefault: boolean("is_default").default(false),
+metadata: jsonb("metadata"),
+createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+archivedAt: timestamp("archived_at", { withTimezone: true }),
+});
+
+export const prompt = pgTable("prompt", {
+id: uuid("id").primaryKey().defaultRandom(),
+workspaceId: uuid("workspace_id").notNull().references(() => workspace.id),
+title: text("title").notNull(),
+content: text("content").notNull(),
+preview: text("preview"),
+version: integer("version").notNull().default(1),
+isPublic: boolean("is_public").default(false),
+isTemplate: boolean("is_template").default(false),
+lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+usageCount: integer("usage_count").default(0),
+createdBy: uuid("created_by").references(() => userAccount.id),
+updatedBy: uuid("updated_by").references(() => userAccount.id),
+createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow(),
+archivedAt: timestamp("archived_at", { withTimezone: true }),
+metadata: jsonb("metadata"),
+});
+
+export const promptVersion = pgTable("prompt_version", {
+id: uuid("id").primaryKey().defaultRandom(),
+promptId: uuid("prompt_id").notNull().references(() => prompt.id),
+version: integer("version").notNull(),
+content: text("content").notNull(),
+notes: text("notes"),
+diffSummary: jsonb("diff_summary"),
+createdBy: uuid("created_by").references(() => userAccount.id),
+createdAt: timestamp("created_at", { withTimezone: true }).defaultNow(),
+});
+
+export const promptLabel = pgTable("prompt_label", {
+promptId: uuid("prompt_id").notNull().references(() => prompt.id, { onDelete: "cascade" }),
+labelId: uuid("label_id").notNull().references(() => label.id, { onDelete: "cascade" }),
+addedAt: timestamp("added_at", { withTimezone: true }).defaultNow(),
+addedBy: uuid("added_by").references(() => userAccount.id),
+}, (t) => ({
+pk: { primaryKey: [t.promptId, t.labelId] }
+}));
+
+export const promptTool = pgTable("prompt_tool", {
+promptId: uuid("prompt_id").notNull().references(() => prompt.id, { onDelete: "cascade" }),
+toolId: uuid("tool_id").notNull().references(() => tool.id),
+}, (t) => ({
+pk: { primaryKey: [t.promptId, t.toolId] }
+}));
+
+⸻
+
+Visibility model (centralized)
+
+Replicate your Entity Visibility Utils with DB queries:
+• Not logged in: only system defaults (labels with is_default=true and workspace_id is null or system workspace).
+• Logged in: union of system defaults + workspace items for workspace_id.
+• Always route through a single getVisibleLabels(workspaceId, includeSystem=true) and listPromptsByLabel(workspaceId, labelId) function. No ad-hoc filtering in components.
+
+⸻
+
+Seeding defaults
+• Create a system workspace workspace.id = 00000000-0000-0000-0000-000000000000.
+• Seed default tools/labels there with is_default=true and workspace_id = system.
+• On new workspace creation, do not copy rows; resolve at query time by unioning system + workspace items (simpler maintenance).
+
+⸻
+
+What happens on label click (DB view) 1. UI calls listPromptsByLabel(workspaceId, labelId, { search, sort, limit, offset }). 2. API runs the query above and returns PromptSummary[]. 3. User picks a prompt → getPrompt(promptId, workspaceId) returns full content → editor loads.
+
+⸻
+
+Roadmap hooks (future)
+• Add collection (folder tree) later: collection, prompt_collection junction.
+• Add attachments, responses, links using your prior interfaces; model them as separate tables.
+• Add share_link + short tokens for public read.
+• Add pg_trgm and pgvector when you introduce search and semantic lookup.
+
+⸻
+
+Acceptance for v0 data layer
+• Can list top N recent labels for arc.
+• Can open Label Sheet with prompts for a label (mock or live).
+• Can load/save a prompt (and write a new prompt_version) transactionally.
+• Supports Unlabeled via query (no special table).
+• Works for multiple workspaces and multiple users.
+
+⸻

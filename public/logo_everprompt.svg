@@ -1,0 +1,40 @@
+<svg width="1200" height="1200" viewBox="0 0 1200 1200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .pulse-ring {
+      animation: pulse 2s infinite ease-in-out;
+      transform-box: fill-box;
+      transform-origin: center;
+    }
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.2); opacity: 0.5; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    @media (prefers-color-scheme: dark) {
+      .yellow-bar { fill: #FCA612; }
+      .blue-shape { fill: #76AADB; stroke: #76AADB; }
+    }
+    @media (prefers-color-scheme: light) {
+      .yellow-bar { fill: #FCA612; }
+      .blue-shape { fill: #306286; stroke: #306286; }
+    }
+  </style>
+
+  <!-- Bars -->
+  <rect x="308" y="844" width="372" height="67" rx="33.5" class="yellow-bar"/>
+  <rect x="308" y="714" width="577" height="67" rx="33.5" class="yellow-bar"/>
+  <rect x="74" y="586" width="1052" height="67" rx="33.5" class="yellow-bar"/>
+  <rect x="308" y="459" width="524" height="67" rx="33.5" class="yellow-bar"/>
+
+  <!-- Blue dot -->
+  <circle cx="988.5" cy="349.5" r="80.5" class="blue-shape"/>
+
+  <!-- Grouped animated pulse ring (now perfectly centered) -->
+  <g class="pulse-ring">
+    <circle cx="988.5" cy="349.5" r="95" fill="none" class="blue-shape" stroke-width="4"/>
+  </g>
+
+  <!-- Chevron arrows -->
+  <rect x="74.9785" y="900.485" width="177.895" height="40.0074" rx="19" transform="rotate(-40.9403 74.9785 900.485)" class="blue-shape"/>
+  <rect x="99.9434" y="694" width="177.895" height="40.0074" rx="19" transform="rotate(40.4268 99.9434 694)" class="blue-shape"/>
+</svg>
