@@ -1,17 +1,13 @@
 "use client";
 
 import * as React from "react";
+import Image from "next/image";
 import {
-  IconCamera,
   IconChartBar,
-  IconDashboard,
   IconDatabase,
   IconFileAi,
   IconFileDescription,
-  IconFileWord,
-  IconFolder,
   IconHelp,
-  IconInnerShadowTop,
   IconListDetails,
   IconReport,
   IconSearch,
@@ -174,9 +170,11 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               className="data-[slot=sidebar-menu-button]:!p-1.5"
             >
               <a href="#" className="flex items-center gap-2">
-                <img
+                <Image
                   src="/logo_everprompt.svg"
                   alt="EverPrompt"
+                  width={32}
+                  height={32}
                   className="h-8 w-8"
                 />
                 <span className="text-base font-semibold">EverPrompt</span>
