@@ -20,8 +20,12 @@ export default function Page() {
             <div className="flex flex-col gap-4 py-4 md:gap-6 md:py-6">
               <div className="flex items-center justify-center h-96">
                 <div className="text-center">
-                  <h1 className="text-2xl font-bold mb-2">Welcome to EverPrompt</h1>
-                  <p className="text-muted-foreground">Your minimalist prompt management platform</p>
+                  <h1 className="text-2xl font-bold mb-2">
+                    Welcome to EverPrompt
+                  </h1>
+                  <p className="text-muted-foreground">
+                    Your minimalist prompt management platform
+                  </p>
                 </div>
               </div>
             </div>
